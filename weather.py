@@ -9,29 +9,32 @@ def check_weather_and_notify():
         print("找不到 LINE 密鑰！")
         return
 
-    # 若要更改預報地點，請修改下方的 latitude (緯度) 與 longitude (經度)
-    # 並在網址參數中新增了 moonrise,moonset
-    url = "https://api.open-meteo.com/v1/forecast?latitude=24.6295226&longitude=121.7919422&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset,moonrise,moonset,precipitation_probability_max,wind_speed_10m_max&timezone=Asia%2FTaipei"
+    # 冬山座標
+    url = "https://open-meteo.com"
     
     try:
         response = requests.get(url)
         data = response.json()
         
         daily = data['daily']
+        # 確保只抓取「當天（第0個）」的數據數字
         temp_max = daily['temperature_2m_max'][0]
         temp_min = daily['temperature_2m_min'][0]
         rain_prob = daily['precipitation_probability_max'][0]
         wind_speed = daily['wind_speed_10m_max'][0]
         
-        # 處理時間格式 (擷取 T 後面的時間字串)
+        # 修正時間格式：只拿當天(第0個)的時間字串，並切除日期只留下小時與分鐘
         def format_time(t_list):
-            return t_list[0].split("T")[1] if t_list and t_list[0] else "無"
+            if t_list and len(t_list) > 0 and t_list[0]:
+                return t_list[0].split("T")[1]
+            return "無"
 
         sunrise = format_time(daily.get('sunrise'))
         sunset = format_time(daily.get('sunset'))
         moonrise = format_time(daily.get('moonrise'))
         moonset = format_time(daily.get('moonset'))
         
+        # 穿搭邏輯判定
         if temp_max < 15:
             outfit = "天氣寒冷 🥶，請穿著厚外套、毛衣，注意保暖！"
         elif 15 <= temp_max < 22:
@@ -58,7 +61,7 @@ def check_weather_and_notify():
             f"💡 貼心提醒：{umbrella_msg}"
         )
 
-        api_url = "https://api.line.me/v2/bot/message/push"
+        api_url = "https://line.me"
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {access_token}"
@@ -72,7 +75,7 @@ def check_weather_and_notify():
         if res.status_code == 200:
             print("進階天氣預報發送成功！")
         else:
-            print(f"發送失敗，錯誤碼: {res.status_code}")
+            print(f"發送失敗，錯誤碼: {res.status_code}, 原因: {res.text}")
             
     except Exception as e:
         print(f"發生錯誤: {e}")
