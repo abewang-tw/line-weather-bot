@@ -10,23 +10,24 @@ def check_weather_and_notify():
         print("找不到 LINE 密鑰，請檢查 Settings 中的 Secret 設定！")
         return
 
-    # 2. 抓取天氣資料
-    city = "Taipei"
-    url = f"https://wttr.in/{city}?format=%l:+%C+%t+下雨機率:+%p"
+    # 2. 改用更穩定的 Open-Meteo 抓取台北天氣資料
+    url = "https://api.open-meteo.com/v1/forecast?latitude=25.0478&longitude=121.5319&daily=precipitation_probability_max&timezone=Asia%2FTaipei"
     
     try:
         response = requests.get(url)
-        response.encoding = 'utf-8'
-        weather_info = response.text.strip()
+        data = response.json()
+        
+        # 取得今天 (第0天) 的最高降雨機率
+        rain_prob = data['daily']['precipitation_probability_max'][0]
         
         need_umbrella = False
-        if "雨" in weather_info or "Rain" in weather_info or "Shower" in weather_info:
+        if rain_prob >= 40: # 降雨機率 40% 以上就提醒帶傘
             need_umbrella = True
 
         # 整理要發送的文字
-        message = f"今日天氣預報：\n{weather_info}\n"
+        message = f"今日天氣預報：\n今日最高降雨機率：{rain_prob}%\n"
         if need_umbrella:
-            message += "⚠️ 今天高機率會下雨，出門記得帶傘喔！☔"
+            message += "⚠️ 今天有機會下雨，出門記得帶傘喔！☔"
         else:
             message += "✨ 今天看來不用帶傘，祝你有美好的一天！☀️"
 
