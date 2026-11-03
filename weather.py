@@ -45,7 +45,7 @@ def check_weather_and_notify():
         umbrella_msg = "⚠️ 今天有機會下雨，出門記得帶傘喔！☔" if need_umbrella else "✨ 今天看來不用帶傘，祝你有美好的一天！☀️"
 
         message = (
-            f"🌤️ 今日天氣預報 (台北)：\n"
+            f"🌤️ 今日天氣預報 (冬山)：\n"
             f"🌡️ 氣溫：{temp_min}°C ~ {temp_max}°C\n"
             f"💧 降雨機率：{rain_prob}%\n"
             f"💨 最大風速：{wind_speed} km/h\n"
