@@ -9,32 +9,37 @@ def check_weather_and_notify():
         print("找不到 LINE 密鑰！")
         return
 
-    # 冬山座標
+    # 💡 使用最乾淨的 Open-Meteo 標準格式網址
     url = "https://open-meteo.com"
     
     try:
         response = requests.get(url)
+        # 如果伺服器回傳狀態碼不是 200，直接印出錯誤
+        if response.status_code != 200:
+            print(f"天氣 API 請求失敗，狀態碼: {response.status_code}")
+            return
+            
         data = response.json()
+        daily = data.get('daily', {})
         
-        daily = data['daily']
-        # 確保只抓取「當天（第0個）」的數據數字
-        temp_max = daily['temperature_2m_max'][0]
-        temp_min = daily['temperature_2m_min'][0]
-        rain_prob = daily['precipitation_probability_max'][0]
-        wind_speed = daily['wind_speed_10m_max'][0]
+        # 安全地獲取清單中的第一個元素
+        temp_max = daily.get('temperature_2m_max', [25.0])[0]
+        temp_min = daily.get('temperature_2m_min', [20.0])[0]
+        rain_prob = daily.get('precipitation_probability_max', [0])[0]
+        wind_speed = daily.get('wind_speed_10m_max', [0.0])[0]
         
-        # 修正時間格式：只拿當天(第0個)的時間字串，並切除日期只留下小時與分鐘
-        def format_time(t_list):
-            if t_list and len(t_list) > 0 and t_list[0]:
-                return t_list[0].split("T")[1]
+        # 修正時間格式，安全擷取時間部分
+        def get_time_str(time_list):
+            if time_list and len(time_list) > 0 and "T" in time_list[0]:
+                return time_list[0].split("T")[1]
             return "無"
 
-        sunrise = format_time(daily.get('sunrise'))
-        sunset = format_time(daily.get('sunset'))
-        moonrise = format_time(daily.get('moonrise'))
-        moonset = format_time(daily.get('moonset'))
+        sunrise = get_time_str(daily.get('sunrise'))
+        sunset = get_time_str(daily.get('sunset'))
+        moonrise = get_time_str(daily.get('moonrise'))
+        moonset = get_time_str(daily.get('moonset'))
         
-        # 穿搭邏輯判定
+        # 穿搭邏輯
         if temp_max < 15:
             outfit = "天氣寒冷 🥶，請穿著厚外套、毛衣，注意保暖！"
         elif 15 <= temp_max < 22:
@@ -73,12 +78,12 @@ def check_weather_and_notify():
         
         res = requests.post(api_url, headers=headers, json=payload)
         if res.status_code == 200:
-            print("進階天氣預報發送成功！")
+            print("天氣預報發送成功！")
         else:
             print(f"發送失敗，錯誤碼: {res.status_code}, 原因: {res.text}")
             
     except Exception as e:
-        print(f"發生錯誤: {e}")
+        print(f"執行時發生錯誤: {e}")
 
 if __name__ == "__main__":
     check_weather_and_notify()
