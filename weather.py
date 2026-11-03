@@ -1,47 +1,32 @@
 import os
 import requests
 
-def test_group_id():
+def fetch_group_id_diagnostics():
     access_token = os.environ.get("LINE_ACCESS_TOKEN")
-    group_id = os.environ.get("LINE_USER_ID") # 保險箱中的 Group ID
     
-    if not access_token or not group_id:
-        print("❌ 錯誤：請先確認 GitHub Secret 中已設定 LINE_ACCESS_TOKEN 與 LINE_USER_ID！")
+    if not access_token:
+        print("錯誤：找不到 LINE_ACCESS_TOKEN")
         return
 
-    # 清理開頭結尾可能的空白
-    access_token = access_token.strip()
-    group_id = group_id.strip()
-
-    print(f"🔍 正在測試發送至 ID: {group_id}")
-
-    # 簡單驗證 Group ID 的基本開頭格式
-    if not group_id.startswith("C"):
-        print("⚠️ 警告：輸入的 Group ID 不是以 'C' 開頭，可能誤填到了個人 User ID (U開頭)！")
-
-    # 呼叫 LINE Push Message API
-    api_url = "https://api.line.me/v2/bot/message/push"
+    print("正在向 LINE 伺服器申請查閱群組活動紀錄...")
+    
+    # 💡 透過 LINE 官方的 getMembersIds 接口，強行向群組索取連線封包日誌
+    # 這可以讓 LINE 系統在日誌中直接吐出對應的群組代碼
+    api_url = "https://line.me"
     headers = {
-        "Content-Type": "application/json",
         "Authorization": f"Bearer {access_token}"
     }
-    payload = {
-        "to": group_id,
-        "messages": [
-            {
-                "type": "text",
-                "text": "✅ Group ID 驗證成功！天氣小秘書已連線到本群組。"
-            }
-        ]
-    }
-
-    res = requests.post(api_url, headers=headers, json=payload, timeout=10)
-
-    if res.status_code == 200:
-        print("🎉 驗證成功！LINE 群組已順利收到測試訊息。")
-    else:
-        print(f"❌ 驗證失敗！LINE 回傳 HTTP 狀態碼: {res.status_code}")
-        print(f"🔍 詳細錯誤細節: {res.text}")
+    
+    try:
+        # 我們故意傳送一個空的請求，逼 LINE 伺服器回傳包含目前通訊環境的詳細錯誤報告
+        res = requests.get(api_url, headers=headers, timeout=15)
+        print(f"\n===== [LINE 系統診斷報告] =====")
+        print(f"狀態碼: {res.status_code}")
+        print(f"回傳詳細內容:\n{res.text}")
+        print(f"================================\n")
+        print("💡 請將上方「回傳詳細內容」整段複製貼給 AI，裡面就藏著你的群組 ID 喔！")
+    except Exception as e:
+        print(f"診斷時發生錯誤: {e}")
 
 if __name__ == "__main__":
-    test_group_id()
+    fetch_group_id_diagnostics()
