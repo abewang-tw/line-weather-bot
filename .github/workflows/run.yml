@@ -2,29 +2,30 @@ name: 每日天氣提醒機器人
 
 on:
   schedule:
-    # 這裡是國際時間 (UTC)，台灣時間是 UTC+8。
-    # 23:30 代表台灣時間早上 7:30 執行
+    # 台灣時間每天早上 07:30 (UTC 23:30)
     - cron: '30 23 * * *'
-  workflow_dispatch: # 這個設定讓你可以隨時手動點擊按鈕測試
+  workflow_dispatch: # 支援手動按鈕觸發
 
 jobs:
   send-weather:
     runs-on: ubuntu-latest
     steps:
-      - name: 複製專案檔案
-        uses: actions/checkout@v4
+      - name: 簽出專案代碼
+        uses: actions/checkout@v3
 
       - name: 設定 Python 環境
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: 安裝需要的工具
-        run: pip install requests
+      - name: 安裝相依套件
+        run: |
+          pip install requests
 
       - name: 執行天氣腳本
         env:
-          # 從 GitHub 保險箱拿出兩把新鑰匙交給程式
           LINE_ACCESS_TOKEN: ${{ secrets.LINE_ACCESS_TOKEN }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
-        run: python weather.py
+          GAS_WEBHOOK_URL: ${{ secrets.GAS_WEBHOOK_URL }}
+        run: |
+          python weather.py
