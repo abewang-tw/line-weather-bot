@@ -21,58 +21,60 @@ def fetch_weather_report(location_name, lat, lon):
         f"precipitation_probability_max,wind_speed_10m_max&timezone=Asia%2FTaipei"
     )
     
-    res = requests.get(url, timeout=10)
-    if res.status_code != 200:
-        return None
+    try:
+        res = requests.get(url, timeout=10)
+        if res.status_code != 200:
+            return None
+            
+        data = res.json()
+        daily = data.get("daily", {})
         
-    data = res.json()
-    daily = data.get("daily", {})
-    
-    temp_max = daily["temperature_2m_max"][0]
-    temp_min = daily["temperature_2m_min"][0]
-    rain_prob = daily["precipitation_probability_max"][0]
-    wind_speed = daily["wind_speed_10m_max"][0]
-    
-    def format_time(t_list):
-        return t_list[0].split("T")[1] if t_list and t_list[0] else "無"
+        temp_max = daily["temperature_2m_max"][0]
+        temp_min = daily["temperature_2m_min"][0]
+        rain_prob = daily["precipitation_probability_max"][0]
+        wind_speed = daily["wind_speed_10m_max"][0]
+        
+        def format_time(t_list):
+            return t_list[0].split("T")[1] if t_list and t_list[0] else "無"
 
-    sunrise = format_time(daily.get("sunrise"))
-    sunset = format_time(daily.get("sunset"))
-    moonrise = format_time(daily.get("moonrise"))
-    moonset = format_time(daily.get("moonset"))
-    
-    if temp_max < 15:
-        outfit = "天氣寒冷 🥶，請穿著厚外套、毛衣，注意保暖！"
-    elif 15 <= temp_max < 22:
-        outfit = "天氣偏涼 🧥，建議洋蔥式穿搭，記得帶件外套。"
-    elif 22 <= temp_max < 28:
-        outfit = "氣候舒適 👕，穿著長袖或短袖搭配薄外套即可。"
-    else:
-        outfit = "天氣炎熱 🥵，建議穿著透氣涼爽的衣服，並注意防曬！"
+        sunrise = format_time(daily.get("sunrise"))
+        sunset = format_time(daily.get("sunset"))
+        moonrise = format_time(daily.get("moonrise"))
+        moonset = format_time(daily.get("moonset"))
+        
+        if temp_max < 15:
+            outfit = "天氣寒冷 🥶，請穿著厚外套、毛衣，注意保暖！"
+        elif 15 <= temp_max < 22:
+            outfit = "天氣偏涼 🧥，建議洋蔥式穿搭，記得帶件外套。"
+        elif 22 <= temp_max < 28:
+            outfit = "氣候舒適 👕，穿著長袖或短袖搭配薄外套即可。"
+        else:
+            outfit = "天氣炎熱 🥵，建議穿著透氣涼爽的衣服，並注意防曬！"
 
-    need_umbrella = rain_prob >= 40
-    umbrella_msg = "⚠️ 今天有機會下雨，出門記得帶傘喔！☔" if need_umbrella else "✨ 今天看來不用帶傘，祝你有美好的一天！☀️"
+        need_umbrella = rain_prob >= 40
+        umbrella_msg = "⚠️ 今天有機會下雨，出門記得帶傘喔！☔" if need_umbrella else "✨ 今天看來不用帶傘，祝你有美好的一天！☀️"
 
-    message = (
-        f"🌤️ 今日天氣預報 ({location_name})：\n"
-        f"🌡️ 氣溫：{temp_min}°C ~ {temp_max}°C\n"
-        f"💧 降雨機率：{rain_prob}%\n"
-        f"💨 最大風速：{wind_speed} km/h\n"
-        f"🌅 日出時間：{sunrise}\n"
-        f"🌇 日落時間：{sunset}\n"
-        f"🌔 月出時間：{moonrise}\n"
-        f"🌘 月落時間：{moonset}\n"
-        f"---\n"
-        f"👗 穿搭建議：{outfit}\n"
-        f"💡 貼心提醒：{umbrella_msg}"
-    )
-    return message
+        message = (
+            f"🌤️ 今日天氣預報 ({location_name})：\n"
+            f"🌡️ 氣溫：{temp_min}°C ~ {temp_max}°C\n"
+            f"💧 降雨機率：{rain_prob}%\n"
+            f"💨 最大風速：{wind_speed} km/h\n"
+            f"🌅 日出時間：{sunrise}\n"
+            f"🌇 日落時間：{sunset}\n"
+            f"🌔 月出時間：{moonrise}\n"
+            f"🌘 月落時間：{moonset}\n"
+            f"---\n"
+            f"👗 穿搭建議：{outfit}\n"
+            f"💡 貼心提醒：{umbrella_msg}"
+        )
+        return message
+    except Exception as e:
+        print(f"抓取天氣資料失敗: {e}")
+        return None
 
 def main():
     access_token = os.environ.get("LINE_ACCESS_TOKEN", "").strip()
     gas_url = os.environ.get("GAS_WEBHOOK_URL", "").strip()
-    
-    # 若未特別設定 GAS_WEBHOOK_URL，亦可保留 fallback 到原有的單一 LINE_USER_ID
     fallback_user_id = os.environ.get("LINE_USER_ID", "").strip()
 
     if not access_token:
@@ -84,7 +86,7 @@ def main():
         print("📡 正在向 GAS 抓取訂閱群組清單...")
         targets = get_group_targets(gas_url)
 
-    # 如果 GAS 未設定或回傳空名單，使用 fallback 預設推播
+    # 若 GAS 未設定或回傳空名單，使用 fallback 預設推播
     if not targets and fallback_user_id:
         print("ℹ️ 使用預設 LINE_USER_ID 進行推播（冬山地區）")
         targets = [{
@@ -122,3 +124,17 @@ def main():
                 continue
 
             payload = {
+                "to": group_id,
+                "messages": [{"type": "text", "text": report_msg}]
+            }
+            res = requests.post(line_push_url, headers=headers, json=payload, timeout=10)
+            
+            if res.status_code == 200:
+                print(f"🎉 成功推播【{loc_name}】至群組 {group_id[:6]}***")
+            else:
+                print(f"❌ 推播至 {group_id[:6]}*** 失敗: {res.status_code}, 原因: {res.text}")
+        except Exception as e:
+            print(f"💥 處理群組 {group_id[:6]}*** 時發生例外: {e}")
+
+if __name__ == "__main__":
+    main()
