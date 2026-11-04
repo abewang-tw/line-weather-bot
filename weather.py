@@ -1,26 +1,49 @@
 import os
 import requests
+import json
+import re
 
-def get_group_targets(gas_url):
-    """向 GAS 讀取所有登記群組與其自選地區經緯度（支援 Google 302 轉址）"""
+# 你的 Google 試算表 ID
+SPREADSHEET_ID = "1wfEbdMSwV4bUJzgMwnrWpwwrAsWb3cwzZv-qeA27h1w"
+
+def get_group_targets():
+    """直接透過 Google 官方 gviz API 讀取試算表，完全繞過 GAS 權限阻礙"""
+    gviz_url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/gviz/tq?tqx=out:json"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
     }
+    
     try:
-        res = requests.get(gas_url, headers=headers, allow_redirects=True, timeout=15)
-        print(f"📡 GAS 回傳狀態碼: {res.status_code}")
+        res = requests.get(gviz_url, headers=headers, timeout=10)
         if res.status_code == 200:
-            data = res.json()
-            print(f"📡 GAS 回傳資料: {data}")
-            return data
-        else:
-            print(f"⚠️ 無法取得群組清單，GAS 狀態碼: {res.status_code}，回應: {res.text[:200]}")
+            # 解析 Google gviz 回傳的包裝格式
+            match = re.search(r"google\.visualization\.Query\.setResponse\((.*)\);", res.text)
+            if match:
+                data = json.loads(match.group(1))
+                rows = data.get("table", {}).get("rows", [])
+                targets = []
+                for r in rows:
+                    cells = r.get("c", [])
+                    # c[0]=groupId, c[1]=locationName, c[2]=latitude, c[3]=longitude
+                    if len(cells) >= 4 and cells[0] and cells[0].get("v"):
+                        targets.append({
+                            "groupId": str(cells[0]["v"]).strip(),
+                            "locationName": str(cells[1]["v"]).strip() if cells[1] and cells[1].get("v") else "冬山",
+                            "lat": float(cells[2]["v"]) if cells[2] and cells[2].get("v") is not None else 24.6295,
+                            "lon": float(cells[3]["v"]) if cells[3] and cells[3].get("v") is not None else 121.7919
+                        })
+                if targets:
+                    print(f"📡 從試算表成功讀取到 {len(targets)} 筆群組資料！")
+                    print(f"📋 目標資料: {targets}")
+                    return targets
+        print(f"⚠️ 讀取試算表失敗，狀態碼: {res.status_code}")
     except Exception as e:
-        print(f"⚠️ 連線 GAS 取得名單失敗: {e}")
+        print(f"⚠️ 解析試算表失敗: {e}")
+        
     return []
 
 def fetch_weather_report(location_name, lat, lon):
-    """依據經緯度抓取該地區天氣與天文數據並組裝訊息"""
+    """依據經緯度抓取該地區天氣與天文數據"""
     url = (
         f"https://api.open-meteo.com/v1/forecast?"
         f"latitude={lat}&longitude={lon}&daily="
@@ -82,19 +105,16 @@ def fetch_weather_report(location_name, lat, lon):
 
 def main():
     access_token = os.environ.get("LINE_ACCESS_TOKEN", "").strip()
-    gas_url = os.environ.get("GAS_WEBHOOK_URL", "").strip()
     fallback_user_id = os.environ.get("LINE_USER_ID", "").strip()
 
     if not access_token:
         print("❌ 錯誤：找不到 LINE_ACCESS_TOKEN！")
         return
 
-    targets = []
-    if gas_url:
-        print("📡 正在向 GAS 抓取訂閱群組清單...")
-        targets = get_group_targets(gas_url)
+    # 直接從試算表讀取多群組清單
+    targets = get_group_targets()
 
-    # 若 GAS 未設定或回傳空名單，使用 fallback 預設推播
+    # 若試算表為空，使用 fallback 預設推播
     if not targets and fallback_user_id:
         print("ℹ️ 使用預設 LINE_USER_ID 進行推播（冬山地區）")
         targets = [{
