@@ -2,12 +2,19 @@ import os
 import requests
 
 def get_group_targets(gas_url):
-    """向 GAS 讀取所有登記群組與其自選地區經緯度"""
+    """向 GAS 讀取所有登記群組與其自選地區經緯度（支援 Google 302 轉址）"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+    }
     try:
-        res = requests.get(gas_url, timeout=10)
+        res = requests.get(gas_url, headers=headers, allow_redirects=True, timeout=15)
+        print(f"📡 GAS 回傳狀態碼: {res.status_code}")
         if res.status_code == 200:
-            return res.json()
-        print(f"⚠️ 無法取得群組清單，GAS 狀態碼: {res.status_code}")
+            data = res.json()
+            print(f"📡 GAS 回傳資料: {data}")
+            return data
+        else:
+            print(f"⚠️ 無法取得群組清單，GAS 狀態碼: {res.status_code}，回應: {res.text[:200]}")
     except Exception as e:
         print(f"⚠️ 連線 GAS 取得名單失敗: {e}")
     return []
@@ -24,6 +31,7 @@ def fetch_weather_report(location_name, lat, lon):
     try:
         res = requests.get(url, timeout=10)
         if res.status_code != 200:
+            print(f"❌ Open-Meteo 狀態碼異常: {res.status_code}")
             return None
             
         data = res.json()
