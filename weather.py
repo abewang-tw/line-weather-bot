@@ -1,168 +1,136 @@
 import os
 import requests
 import json
+import random
 import re
 
-# 你的 Google 試算表 ID
+# ==========================================
+# 1. 金鑰與試算表設定
+# ==========================================
+# 支援環境變數或直接帶入金鑰
+LINE_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "M5dOcrWbmJCxMX6lDyXJbU5S/h51skZreDIa0gCmhpcchuBlzL2nXkBHU0eAaiPW4CZDHJfzhQ+l5RfGBMN2zr9aq/E55+/QwvFChXbvKF2ycUnbH1VPAcl9Bbd8XAkmkJ1SSgPaL2fGsInptYHRvwdB04t89/1O/w1cDnyilFU=")
+CWA_API_KEY = os.environ.get("CWA_API_KEY", "CWA-204D87D0-CB59-4714-BDC3-104663B1FF50")
 SPREADSHEET_ID = "1wfEbdMSwV4bUJzgMwnrWpwwrAsWb3cwzZv-qeA27h1w"
 
+# 台灣主要縣市與鄉鎮座標
+TAIWAN_LOCATIONS = {
+    "冬山": {"lat": 24.6295, "lon": 121.7919}, "冬山鄉": {"lat": 24.6295, "lon": 121.7919},
+    "羅東": {"lat": 24.6770, "lon": 121.7667}, "羅東鎮": {"lat": 24.6770, "lon": 121.7667},
+    "宜蘭": {"lat": 24.7570, "lon": 121.7530}, "宜蘭市": {"lat": 24.7570, "lon": 121.7530},
+    "礁溪": {"lat": 24.8236, "lon": 121.7718}, "頭城": {"lat": 24.8596, "lon": 121.8232},
+    "蘇澳": {"lat": 24.5960, "lon": 121.8517}, "花蓮": {"lat": 23.9872, "lon": 121.6016},
+    "吉安": {"lat": 23.9614, "lon": 121.5677}, "玉里": {"lat": 23.3365, "lon": 121.3125},
+    "台東": {"lat": 22.7583, "lon": 121.1444}, "台北": {"lat": 25.0330, "lon": 121.5654},
+    "新北": {"lat": 25.0116, "lon": 121.4628}, "板橋": {"lat": 25.0116, "lon": 121.4628},
+    "基隆": {"lat": 25.1276, "lon": 121.7392}, "桃園": {"lat": 24.9936, "lon": 121.3010},
+    "中壢": {"lat": 24.9537, "lon": 121.2257}, "新竹": {"lat": 24.8138, "lon": 120.9675},
+    "苗栗": {"lat": 24.5602, "lon": 120.8214}, "台中": {"lat": 24.1477, "lon": 120.6736},
+    "彰化": {"lat": 24.0817, "lon": 120.5385}, "南投": {"lat": 23.9099, "lon": 120.6848},
+    "雲林": {"lat": 23.7092, "lon": 120.4313}, "嘉義": {"lat": 23.4800, "lon": 120.4491},
+    "台南": {"lat": 22.9997, "lon": 120.2270}, "高雄": {"lat": 22.6273, "lon": 120.3014},
+    "屏東": {"lat": 22.6761, "lon": 120.4941}
+}
+
+COUNTY_MAPPING = {
+    "冬山": "宜蘭縣", "羅東": "宜蘭縣", "宜蘭": "宜蘭縣", "礁溪": "宜蘭縣", "頭城": "宜蘭縣", "蘇澳": "宜蘭縣",
+    "花蓮": "花蓮縣", "吉安": "花蓮縣", "玉里": "花蓮縣", "台東": "臺東縣", "臺東": "臺東縣",
+    "台北": "臺北市", "臺北": "臺北市", "新北": "新北市", "板橋": "新北市", "基隆": "基隆市",
+    "桃園": "桃園市", "中壢": "桃園市", "新竹": "新竹市", "苗栗": "苗栗縣",
+    "台中": "臺中市", "臺中": "臺中市", "彰化": "彰化縣", "南投": "南投縣", "雲林": "雲林縣",
+    "嘉義": "嘉義市", "台南": "臺南市", "臺南": "臺南市", "高雄": "高雄市", "屏東": "屏東縣"
+}
+
+def get_county_name(name):
+    for k, v in COUNTY_MAPPING.items():
+        if k in name:
+            return v
+    return name if ("市" in name or "縣" in name) else "宜蘭縣"
+
+def get_geo(name):
+    clean = re.sub(r"[市縣鄉鎮區]", "", name)
+    if name in TAIWAN_LOCATIONS:
+        return TAIWAN_LOCATIONS[name]
+    if clean in TAIWAN_LOCATIONS:
+        return TAIWAN_LOCATIONS[clean]
+    return {"lat": 24.6295, "lon": 121.7919}
+
+# ==========================================
+# 2. 讀取 Google 試算表（群組名單與笑話庫）
+# ==========================================
+def fetch_gviz_table(sheet_name=""):
+    url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/gviz/tq?tqx=out:json"
+    if sheet_name:
+        url += f"&sheet={sheet_name}"
+    
+    headers = {"User-Agent": "Mozilla/5.0"}
+    res = requests.get(url, headers=headers, timeout=10)
+    match = re.search(r"google\.visualization\.Query\.setResponse\((.*)\);", res.text)
+    if not match:
+        return []
+    
+    data = json.loads(match.group(1))
+    rows = data.get("table", {}).get("rows", [])
+    return rows
+
 def get_group_targets():
-    """直接透過 Google 官方 gviz API 讀取試算表，完全繞過 GAS 權限阻礙"""
-    gviz_url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/gviz/tq?tqx=out:json"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-    }
-    
+    """讀取 工作表1 的群組名單與設定地點"""
+    targets = []
     try:
-        res = requests.get(gviz_url, headers=headers, timeout=10)
-        if res.status_code == 200:
-            # 解析 Google gviz 回傳的包裝格式
-            match = re.search(r"google\.visualization\.Query\.setResponse\((.*)\);", res.text)
-            if match:
-                data = json.loads(match.group(1))
-                rows = data.get("table", {}).get("rows", [])
-                targets = []
-                for r in rows:
-                    cells = r.get("c", [])
-                    # c[0]=groupId, c[1]=locationName, c[2]=latitude, c[3]=longitude
-                    if len(cells) >= 4 and cells[0] and cells[0].get("v"):
-                        targets.append({
-                            "groupId": str(cells[0]["v"]).strip(),
-                            "locationName": str(cells[1]["v"]).strip() if cells[1] and cells[1].get("v") else "冬山",
-                            "lat": float(cells[2]["v"]) if cells[2] and cells[2].get("v") is not None else 24.6295,
-                            "lon": float(cells[3]["v"]) if cells[3] and cells[3].get("v") is not None else 121.7919
-                        })
-                if targets:
-                    print(f"📡 從試算表成功讀取到 {len(targets)} 筆群組資料！")
-                    print(f"📋 目標資料: {targets}")
-                    return targets
-        print(f"⚠️ 讀取試算表失敗，狀態碼: {res.status_code}")
-    except Exception as e:
-        print(f"⚠️ 解析試算表失敗: {e}")
-        
-    return []
-
-def fetch_weather_report(location_name, lat, lon):
-    """依據經緯度抓取該地區天氣與天文數據"""
-    url = (
-        f"https://api.open-meteo.com/v1/forecast?"
-        f"latitude={lat}&longitude={lon}&daily="
-        f"temperature_2m_max,temperature_2m_min,sunrise,sunset,moonrise,moonset,"
-        f"precipitation_probability_max,wind_speed_10m_max&timezone=Asia%2FTaipei"
-    )
-    
-    try:
-        res = requests.get(url, timeout=10)
-        if res.status_code != 200:
-            print(f"❌ Open-Meteo 狀態碼異常: {res.status_code}")
-            return None
-            
-        data = res.json()
-        daily = data.get("daily", {})
-        
-        temp_max = daily["temperature_2m_max"][0]
-        temp_min = daily["temperature_2m_min"][0]
-        rain_prob = daily["precipitation_probability_max"][0]
-        wind_speed = daily["wind_speed_10m_max"][0]
-        
-        def format_time(t_list):
-            return t_list[0].split("T")[1] if t_list and t_list[0] else "無"
-
-        sunrise = format_time(daily.get("sunrise"))
-        sunset = format_time(daily.get("sunset"))
-        moonrise = format_time(daily.get("moonrise"))
-        moonset = format_time(daily.get("moonset"))
-        
-        if temp_max < 15:
-            outfit = "天氣寒冷 🥶，請穿著厚外套、毛衣，注意保暖！"
-        elif 15 <= temp_max < 22:
-            outfit = "天氣偏涼 🧥，建議洋蔥式穿搭，記得帶件外套。"
-        elif 22 <= temp_max < 28:
-            outfit = "氣候舒適 👕，穿著長袖或短袖搭配薄外套即可。"
-        else:
-            outfit = "天氣炎熱 🥵，建議穿著透氣涼爽的衣服，並注意防曬！"
-
-        need_umbrella = rain_prob >= 40
-        umbrella_msg = "⚠️ 今天有機會下雨，出門記得帶傘喔！☔" if need_umbrella else "✨ 今天看來不用帶傘，祝你有美好的一天！☀️"
-
-        message = (
-            f"🌤️ 今日天氣預報 ({location_name})：\n"
-            f"🌡️ 氣溫：{temp_min}°C ~ {temp_max}°C\n"
-            f"💧 降雨機率：{rain_prob}%\n"
-            f"💨 最大風速：{wind_speed} km/h\n"
-            f"🌅 日出時間：{sunrise}\n"
-            f"🌇 日落時間：{sunset}\n"
-            f"🌔 月出時間：{moonrise}\n"
-            f"🌘 月落時間：{moonset}\n"
-            f"---\n"
-            f"👗 穿搭建議：{outfit}\n"
-            f"💡 貼心提醒：{umbrella_msg}"
-        )
-        return message
-    except Exception as e:
-        print(f"抓取天氣資料失敗: {e}")
-        return None
-
-def main():
-    access_token = os.environ.get("LINE_ACCESS_TOKEN", "").strip()
-    fallback_user_id = os.environ.get("LINE_USER_ID", "").strip()
-
-    if not access_token:
-        print("❌ 錯誤：找不到 LINE_ACCESS_TOKEN！")
-        return
-
-    # 直接從試算表讀取多群組清單
-    targets = get_group_targets()
-
-    # 若試算表為空，使用 fallback 預設推播
-    if not targets and fallback_user_id:
-        print("ℹ️ 使用預設 LINE_USER_ID 進行推播（冬山地區）")
-        targets = [{
-            "groupId": fallback_user_id,
-            "locationName": "冬山",
-            "lat": 24.6295226,
-            "lon": 121.7919422
-        }]
-
-    if not targets:
-        print("⚠️ 無推播目標群組，程序結束。")
-        return
-
-    print(f"📋 共取得 {len(targets)} 個推播目標，開始發送...")
-
-    line_push_url = "https://api.line.me/v2/bot/message/push"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {access_token}"
-    }
-
-    for item in targets:
-        group_id = item.get("groupId")
-        loc_name = item.get("locationName", "冬山")
-        lat = item.get("lat", 24.6295)
-        lon = item.get("lon", 121.7919)
-
-        if not group_id:
-            continue
-
-        try:
-            report_msg = fetch_weather_report(loc_name, lat, lon)
-            if not report_msg:
-                print(f"❌ 抓取【{loc_name}】天氣失敗，略過此群組。")
+        rows = fetch_gviz_table(sheet_name="工作表1")
+        for row in rows:
+            c = row.get("c", [])
+            if not c or not c[0]:
                 continue
-
-            payload = {
-                "to": group_id,
-                "messages": [{"type": "text", "text": report_msg}]
-            }
-            res = requests.post(line_push_url, headers=headers, json=payload, timeout=10)
+            gid = str(c[0].get("v", "")).strip()
+            if not gid or gid == "groupId":
+                continue
             
-            if res.status_code == 200:
-                print(f"🎉 成功推播【{loc_name}】至群組 {group_id[:6]}***")
-            else:
-                print(f"❌ 推播至 {group_id[:6]}*** 失敗: {res.status_code}, 原因: {res.text}")
-        except Exception as e:
-            print(f"💥 處理群組 {group_id[:6]}*** 時發生例外: {e}")
+            loc = str(c[1].get("v", "冬山")).strip() if len(c) > 1 and c[1] else "冬山"
+            lat = float(c[2].get("v", 0)) if len(c) > 2 and c[2] else 0.0
+            lon = float(c[3].get("v", 0)) if len(c) > 3 and c[3] else 0.0
+            
+            if lat == 0 or lon == 0:
+                geo = get_geo(loc)
+                lat, lon = geo["lat"], geo["lon"]
+                
+            targets.append({"groupId": gid, "locationName": loc, "lat": lat, "lon": lon})
+    except Exception as e:
+        print(f"讀取群組名單出錯: {e}")
+    return targets
 
-if __name__ == "__main__":
-    main()
+def get_random_joke():
+    """從試算表 笑話庫 隨機抽取笑話"""
+    try:
+        rows = fetch_gviz_table(sheet_name="笑話庫")
+        jokes = []
+        for row in rows:
+            c = row.get("c", [])
+            if c and c[0] and c[0].get("v"):
+                text = str(c[0].get("v")).strip()
+                if text and text != "笑話內容":
+                    jokes.append(text)
+        if jokes:
+            return random.choice(jokes)
+    except Exception as e:
+        print(f"讀取笑話庫出錯: {e}")
+    return "哪一種水果最容易迷路？\n答案：藍莓（因為「藍莓」方向感）。"
+
+# ==========================================
+# 3. 雙來源氣象組裝（CWA 地理生活預報 + Open-Meteo 風速與日月出落）
+# ==========================================
+def generate_weather_report(location_name, lat, lon):
+    county = get_county_name(location_name)
+    
+    # 1. 中央氣象署 (CWA) 獲取白天預報、溫度與降雨機率
+    wx, pop, min_t, max_t = "晴時多雲", 20, "20", "28"
+    try:
+        cwa_url = f"https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001?Authorization={CWA_API_KEY}&locationName={county}"
+        res = requests.get(cwa_url, timeout=10)
+        if res.status_code == 200:
+            data = res.json()
+            loc_data = data.get("records", {}).get("location", [])
+            if loc_data:
+                elements = loc_data[0].get("weatherElement", [])
+                for el in elements:
+                    name = el.get("elementName")
+                    times
