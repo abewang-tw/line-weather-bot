@@ -133,4 +133,95 @@ def generate_weather_report(location_name, lat, lon):
                 elements = loc_data[0].get("weatherElement", [])
                 for el in elements:
                     name = el.get("elementName")
-                    times
+                    times = el.get("time", [])
+                    if times and "parameter" in times[0]:
+                        p_name = times[0]["parameter"].get("parameterName", "")
+                        if name == "Wx": wx = p_name
+                        elif name == "PoP": pop = int(p_name) if p_name.isdigit() else 0
+                        elif name == "MinT": min_t = p_name
+                        elif name == "MaxT": max_t = p_name
+    except Exception as e:
+        print(f"CWA 取得失敗: {e}")
+
+    # 2. Open-Meteo 獲取日出日落、月出月落與風速
+    sunrise, sunset, moonrise, moonset, wind_speed = "--:--", "--:--", "--:--", "--:--", "--"
+    try:
+        om_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=sunrise,sunset,moonrise,moonset,wind_speed_10m_max&timezone=Asia%2FTaipei"
+        res = requests.get(om_url, timeout=10)
+        if res.status_code == 200:
+            daily = res.json().get("daily", {})
+            def fmt(arr): return arr[0].split("T")[1] if arr and arr[0] else "無"
+            sunrise = fmt(daily.get("sunrise", []))
+            sunset = fmt(daily.get("sunset", []))
+            moonrise = fmt(daily.get("moonrise", []))
+            moonset = fmt(daily.get("moonset", []))
+            wind_speed = daily.get("wind_speed_10m_max", ["--"])[0]
+    except Exception as e:
+        print(f"Open-Meteo 取得失敗: {e}")
+
+    # 穿搭與提醒
+    try:
+        max_num = float(max_t)
+    except:
+        max_num = 25.0
+        
+    if max_num < 15:
+        outfit = "天氣寒冷 🥶，請穿厚外套、圍巾，注意保暖！"
+    elif max_num < 22:
+        outfit = "天氣偏涼 🧥，建議洋蔥式穿搭，隨身帶件外套。"
+    elif max_num < 28:
+        outfit = "氣候舒適 👕，穿長袖或短袖搭配薄外套即可。"
+    else:
+        outfit = "天氣炎熱 🥵，建議穿著透氣涼爽衣服，並注意防曬！"
+
+    umbrella_msg = "⚠️ 今天有機會下雨，出門記得帶傘喔！☔" if pop >= 30 else "✨ 今天看來不用帶傘，祝你有美好的一天！☀️"
+    joke = get_random_joke()
+
+    return (
+        f"🌤️ 今日天氣預報 ({location_name})：\n"
+        f"📝 天氣狀況：{wx}\n"
+        f"🌡️ 氣溫：{min_t}°C ~ {max_t}°C\n"
+        f"💧 降雨機率：{pop}%\n"
+        f"💨 最大風速：{wind_speed} km/h\n"
+        f"🌅 日出時間：{sunrise}\n"
+        f"🌇 日落時間：{sunset}\n"
+        f"🌔 月出時間：{moonrise}\n"
+        f"🌘 月落時間：{moonset}\n"
+        f"---\n"
+        f"👗 穿搭建議：{outfit}\n"
+        f"💡 貼心提醒：{umbrella_msg}\n\n"
+        f"🎭 每日一笑：\n{joke}"
+    )
+
+# ==========================================
+# 4. 推播排程主程式
+# ==========================================
+def send_line_push(to, text):
+    url = "https://api.line.me/v2/bot/message/push"
+    headers = {
+        "Content-Type": "application/json; charset=UTF-8",
+        "Authorization": f"Bearer {LINE_TOKEN}"
+    }
+    payload = {"to": to, "messages": [{"type": "text", "text": text}]}
+    res = requests.post(url, headers=headers, json=payload, timeout=10)
+    return res.status_code
+
+def main():
+    targets = get_group_targets()
+    if not targets:
+        print("未找到任何訂閱群組。")
+        return
+
+    print(f"開始執行推播，共 {len(targets)} 個群組/使用者")
+    for t in targets:
+        gid = t["groupId"]
+        loc = t["locationName"]
+        lat = t["lat"]
+        lon = t["lon"]
+        
+        msg = generate_weather_report(loc, lat, lon)
+        code = send_line_push(gid, msg)
+        print(f"推播給 [{loc}] ({gid}) -> HTTP {code}")
+
+if __name__ == "__main__":
+    main()
