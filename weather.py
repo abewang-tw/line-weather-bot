@@ -4,6 +4,7 @@ import json
 import random
 import re
 import time
+import datetime
 
 # ==========================================
 # 1. 金鑰與試算表設定
@@ -29,7 +30,8 @@ TAIWAN_LOCATIONS = {
     "屏東": {"lat": 22.6761, "lon": 120.4941}
 }
 
-WEEKDAY_MAP = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"]
+# Python weekday 對應表 (0: 週一, 1: 週二 ... 6: 週日)
+PY_WEEKDAYS = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"]
 
 def get_geo(name):
     clean = re.sub(r"[市縣鄉鎮區]", "", name)
@@ -91,7 +93,7 @@ def get_random_joke():
     return "哪一種水果最容易迷路？\n答案：藍莓（因為「藍莓」方向感）。"
 
 # ==========================================
-# 3. 獲取週一~週日 7 天完整氣象預報 (氣溫/降雨/風速/UV/AQI)
+# 3. 獲取未來 7 天氣象預報 (動態計算星期幾)
 # ==========================================
 def get_uv_desc(uv):
     if uv < 3: return f"{uv:.1f}(低量)"
@@ -103,14 +105,14 @@ def get_uv_desc(uv):
 def get_aqi_desc(aqi):
     if aqi <= 50: return f"{aqi}(良好 🟢)"
     elif aqi <= 100: return f"{aqi}(普通 🟡)"
-    elif aqi <= 150: return f"{aqi}(對敏感族不健康 🟠)"
+    elif aqi <= 150: return f"{aqi}(敏感不佳 🟠)"
     return f"{aqi}(不健康 🔴)"
 
 def generate_weekly_comprehensive_report(location_name):
     geo = get_geo(location_name)
     lat, lon = geo["lat"], geo["lon"]
     
-    # 1. 抓取 Open-Meteo 逐日天氣（氣溫、降雨機率、風速、紫外線指數）
+    # 1. 抓取 Open-Meteo 逐日天氣
     daily_data = {}
     try:
         weather_url = (
@@ -138,7 +140,7 @@ def generate_weekly_comprehensive_report(location_name):
     except Exception as e:
         print(f"空氣品質 API 連線失敗: {e}")
 
-    # 3. 組裝週一至週日逐日卡片
+    # 3. 組裝未來 7 天逐日卡片（根據真實日期動態計算星期）
     days_text = []
     dates = daily_data.get("time", [])
     min_temps = daily_data.get("temperature_2m_min", [])
@@ -148,7 +150,16 @@ def generate_weekly_comprehensive_report(location_name):
     uvs = daily_data.get("uv_index_max", [])
 
     for i in range(min(7, len(dates))):
-        d_str = dates[i][5:] # MM-DD
+        full_date = dates[i]  # 例如 "2026-11-11"
+        d_str = full_date[5:]  # "11-11"
+        
+        # 動態計算星期幾
+        try:
+            date_obj = datetime.datetime.strptime(full_date, "%Y-%m-%d")
+            weekday_name = PY_WEEKDAYS[date_obj.weekday()]
+        except:
+            weekday_name = "預報"
+
         min_t = min_temps[i] if i < len(min_temps) else "--"
         max_t = max_temps[i] if i < len(max_temps) else "--"
         rain = rain_probs[i] if i < len(rain_probs) else 0
@@ -158,8 +169,6 @@ def generate_weekly_comprehensive_report(location_name):
         
         aqi_val = aqi_data[i] if i < len(aqi_data) else 45
         aqi_text = get_aqi_desc(int(aqi_val))
-
-        weekday_name = WEEKDAY_MAP[i]
 
         day_block = (
             f"📌 【{weekday_name}】{d_str}\n"
@@ -175,8 +184,8 @@ def generate_weekly_comprehensive_report(location_name):
     joke = get_random_joke()
 
     return (
-        f"📅【本週一週氣象趨勢】({location_name})\n"
-        f"包含週一至週日氣溫、降雨、風速、紫外線與空氣品質：\n"
+        f"📅【未來一週氣象趨勢】({location_name})\n"
+        f"包含未來 7 天氣溫、降雨、風速、紫外線與空氣品質：\n"
         f"---------------------------------\n\n"
         f"{forecast_content}\n\n"
         f"---------------------------------\n"
@@ -211,7 +220,7 @@ def main():
         msg = generate_weekly_comprehensive_report(loc)
         code = send_line_push(gid, msg)
         print(f"推播給 [{loc}] ({gid}) -> HTTP {code}")
-        time.sleep(2) # 間隔防 429
+        time.sleep(2)  # 間隔防 429
 
 if __name__ == "__main__":
     main()
