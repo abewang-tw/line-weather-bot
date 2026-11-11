@@ -1,10 +1,10 @@
-name: 每日天氣提醒機器人
+name: 每週天氣提醒機器人
 
 on:
   schedule:
-    # 台灣時間每天早上 07:30 (UTC 23:30)
-    - cron: '30 23 * * *'
-  workflow_dispatch: # 支援手動按鈕觸發
+    # 台灣時間每週一早上 07:30（對應 UTC 週日 23:30）
+    - cron: '30 23 * * 0'
+  workflow_dispatch: # 保留手動按鈕隨時測試
 
 jobs:
   send-weather:
@@ -24,8 +24,6 @@ jobs:
 
       - name: 執行天氣腳本
         env:
-          LINE_ACCESS_TOKEN: ${{ secrets.LINE_ACCESS_TOKEN }}
-          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
-          GAS_WEBHOOK_URL: ${{ secrets.GAS_WEBHOOK_URL }}
-        run: |
-          python weather.py
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_ACCESS_TOKEN }}
+          CWA_API_KEY: ${{ secrets.CWA_API_KEY }}
+        run: python weather.py
